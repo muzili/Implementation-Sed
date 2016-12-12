@@ -33,51 +33,66 @@
 #include <unistd.h>
 #include <getopt.h>
 
-#define FLAGS_PATTERN "is"
+#define FLAG_S "-s"
+#define FLAG_I "-i"
+#define FLAG_SECVENTIONAL "-secventional"
 
 #define I_DISABLED flagI == 0
 #define I_ENABLED flagI == 1
 #define S_DISABLED flagS == 0
 #define S_ENABLED flagS == 1
 
-#define clearInput memset(input, '\0', 4096);
+#define INPUT_SIZE 4096
+
+#define clearInput memset(input, '\0', INPUT_SIZE);
 
 /**
  * @var wordOne
+ *
  * @brief premenna,do ktorej sa načíta reťazec, ktorý budeme hľadať v súbore
  */
 char *wordOne;
 
 /**
  * @var wordTwo
+ *
  * @brief premenna,do ktorej sa načíta reťazec, ktorý budeme meniť za hľadaný reťazec
  */
 char *wordTwo;
 
 /**
- * @var threads[]
- * @brief pole vlákien
- */
-//pthread_t threads[];
-
-/**
  * @var flagI
+ *
  * @brief premenná,do ktorej je načítaný prepínač -i
  */
 int flagI = 0;
 
 /**
  * @var flagS
+ *
  * @brief premenná,do ktorej je načítaný prepínač -s
  */
 int flagS = 0;
 
+/**
+ * @var isSecventional
+ *
+ * @brief premenná,do ktorej je načítaný prepínač -secventional
+ */
+int isSecventional = 0;
 
 /**
  * @var mutex
+ *
  * @brief mutext, ktorý je používaný pri výpise. Tz. aby mal výpis dobré poradie tak sa mutext uzamkne, dokým sa neskončí vypisovanie a po skončení sa odomkne.
  */
 pthread_mutex_t mutex;
+
+int usage();
+void renameFile(const char *originalName, const char *newName);
+char *toLowerCase(char *word);
+char *replace_str(const char *original, const char *pattern, const char *replacement);
+void *thread(void *inputFile);
 
 /**
  * Metóda, ktorá vypisuje ako pracovať so semetrálkou.
@@ -103,6 +118,9 @@ void renameFile(const char *originalName, const char *newName) {
     if (rename(originalName, newName) == 0) {
         printf("Result is in file with name '%s'.\n\n", newName);
     } else {
+        if (remove(originalName) != 0) {
+            fprintf(stderr, "File deleting error: %s\n", strerror(errno));
+        }
         fprintf(stderr, "File renaming error: %s\n", strerror(errno));
     }
 }
@@ -157,6 +175,7 @@ char *replace_str(const char *original, const char *pattern, const char *replace
     }
     
     for (r = corrected, p = original; (q = strstr(p, pattern)) != NULL; p = q + patternLength) {
+        
         ptrdiff_t length = q - p;
         memcpy(r, p, length);
         r += length;
@@ -176,7 +195,7 @@ char *replace_str(const char *original, const char *pattern, const char *replace
  */
 void *thread(void *inputFile) {
     
-    char input[4096], *tempFileName;
+    char input[INPUT_SIZE], *tempFileName;
     char *inputFileName = (char *)inputFile;
     
     asprintf(&tempFileName, ".tempFILE_%s_%d.txt", inputFileName, getpid());
@@ -193,7 +212,7 @@ void *thread(void *inputFile) {
         pthread_mutex_lock(&mutex);
         
         while (!feof(file)) {
-            fgets(input, 4096, file);
+            fgets(input, INPUT_SIZE, file);
             printf("%s", replace_str(toLowerCase(input), toLowerCase(wordOne), wordTwo));
             clearInput
         }
@@ -208,7 +227,7 @@ void *thread(void *inputFile) {
         tempFile = fopen(tempFileName,"w+");
         
         while (!feof(file)) {
-            fgets(input, 4096, file);
+            fgets(input, INPUT_SIZE, file);
             fputs(replace_str(input, wordOne, wordTwo), tempFile);
             clearInput
         }
@@ -221,7 +240,7 @@ void *thread(void *inputFile) {
         pthread_mutex_lock(&mutex);
         
         while (!feof(file)) {
-            fgets(input, 4096, file);
+            fgets(input, INPUT_SIZE, file);
             printf("%s", replace_str(input, wordOne, wordTwo));
             clearInput
         }
@@ -236,7 +255,7 @@ void *thread(void *inputFile) {
         tempFile = fopen(tempFileName,"w+");
         
         while (!feof(file)) {
-            fgets(input, 4096, file);
+            fgets(input, INPUT_SIZE, file);
             fputs(replace_str(toLowerCase(input), toLowerCase(wordOne), wordTwo), tempFile);
             clearInput
         }
@@ -248,6 +267,10 @@ void *thread(void *inputFile) {
     rewind(file);
     fclose(file);
     
+    if (isSecventional == 0) {
+        pthread_exit(NULL);
+    }
+
     return 0;
 }
 
@@ -256,27 +279,28 @@ void *thread(void *inputFile) {
  */
 int main(int argc, char *argv[]) {
     
-    int c, i, numberOfFiles, arguments = 1;
-    
-    if(argc < 3) {
+    int i, numberOfFiles, arguments = 1;
+
+    if (argc < 3) {
         fprintf(stderr, "Not enough arguments.\n");
         return usage();;
     }
     
-    while ((c = getopt (argc, argv, FLAGS_PATTERN)) != -1) {
-        switch (c) {
-            case 'i':
-                flagI = 1;
-                arguments++;
-                break;
-            case 's':
-                flagS = 1;
-                arguments++;
-                break;
-            default:
-                fprintf(stderr, "Wrong flag.\n");
-                return 1;
-                break;
+    for (i = 0; i < argc; i++) {
+        if (strcmp(argv[i], FLAG_SECVENTIONAL) == 0) {
+            isSecventional = 1;
+            arguments++;
+            continue;
+        }
+        if (strcmp(argv[i], FLAG_I) == 0) {
+            flagI = 1;
+            arguments++;
+            continue;
+        }
+        if (strcmp(argv[i], FLAG_S) == 0) {
+            flagS = 1;
+            arguments++;
+            continue;
         }
     }
     
@@ -295,19 +319,26 @@ int main(int argc, char *argv[]) {
         return usage();;
     }
     
-    pthread_mutex_init(&mutex, NULL);
-    
-    pthread_t *threads = malloc(sizeof(pthread_t) * (numberOfFiles + 1));
-    
-    for (i = 0; i < numberOfFiles; i++) {
-        pthread_create(&threads[i], NULL, thread, (void *)argv[i+arguments]);
+    if (isSecventional == 1) {
+        
+        for (i = 0; i < numberOfFiles; i++) {
+            thread((void *)argv[i+arguments]);
+        }
+        
+    } else {
+        pthread_mutex_init(&mutex, NULL);
+        
+        pthread_t *threads = malloc(sizeof(pthread_t) * (numberOfFiles + 1));
+        
+        for (i = 0; i < numberOfFiles; i++) {
+            pthread_create(&threads[i], NULL, thread, (void *)argv[i+arguments]);
+        }
+        for (i = 0; i < numberOfFiles; i++) {
+            pthread_join(threads[i], NULL);
+        }
+        
+        pthread_mutex_destroy(&mutex);
     }
-    
-    for (i = 0; i < numberOfFiles; i++) {
-        pthread_join(threads[i], NULL);
-    }
-    
-    pthread_mutex_destroy(&mutex);
     
     pthread_exit(NULL);
     
