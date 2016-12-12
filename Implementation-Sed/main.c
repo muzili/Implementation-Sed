@@ -1,11 +1,3 @@
-//
-//  sem.c
-//  Implementation-Sed
-//
-//  Created by Pavol Kmet on 10/12/2016.
-//  Copyright © 2016 Pavol Kmet, All rights reserved.
-//
-
 /**
  * @file sem.c
  * @author Pavol Kmeť
@@ -75,7 +67,7 @@ int flagI = 0;
 int flagS = 0;
 
 /**
- * @var isSecventional
+ * @var isSecventional, ak je nastavený na 1, tak sa príkaz vykonáva sekvenčne
  *
  * @brief premenná,do ktorej je načítaný prepínač -secventional
  */
@@ -175,7 +167,6 @@ char *replace_str(const char *original, const char *pattern, const char *replace
     }
     
     for (r = corrected, p = original; (q = strstr(p, pattern)) != NULL; p = q + patternLength) {
-        
         ptrdiff_t length = q - p;
         memcpy(r, p, length);
         r += length;
@@ -198,7 +189,7 @@ void *thread(void *inputFile) {
     char input[INPUT_SIZE], *tempFileName;
     char *inputFileName = (char *)inputFile;
     
-    asprintf(&tempFileName, ".tempFILE_%s_%d.txt", inputFileName, getpid());
+    asprintf(&tempFileName, "%s.TEMPORARY_FILE_%d.txt", inputFileName, getpid());
     
     FILE *file;
     file = fopen(inputFileName,"r");
